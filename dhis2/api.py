@@ -40,7 +40,8 @@ class Api(object):
         api_access_token: str = None,
         api_version: Union[int, str] = None,
         user_agent: str = None,
-        validate: bool = False
+        validate: bool = False,
+        deny_self_signed_certificate: bool = True
     ) -> None:
         """
 
@@ -64,6 +65,7 @@ class Api(object):
         self.api_version = api_version
 
         self.session = requests.Session()
+        self.session.verify = deny_self_signed_certificate
         if password is not None:
             self.username = username
             self.session.auth = (self.username, password)
@@ -249,9 +251,9 @@ class Api(object):
                 [isinstance(elem, tuple) for elem in params]
             ):
                 raise ClientException("`params` list must all be tuples")
-        if data and not isinstance(data, dict):
+        if data and not isinstance(data, (dict, list)):
             raise ClientException(
-                "`data` must be a dict, not {}".format(data.__class__.__name__)  # type: ignore
+                "`data` must be a dict or list, not {}".format(data.__class__.__name__)  # type: ignore
             )
 
     def _make_request(
@@ -288,7 +290,11 @@ class Api(object):
             r = self.session.put(url=url, json=data, params=params, timeout=timeout)
 
         elif method == "patch":
-            r = self.session.patch(url=url, json=data, params=params, timeout=timeout)
+            self.session.headers["Content-Type"] = "application/json-patch+json"
+            try:
+                r = self.session.patch(url=url, json=data, params=params, timeout=timeout)
+            finally:
+                del self.session.headers["Content-Type"]
 
         elif method == "delete":
             r = self.session.delete(url=url, params=params, timeout=timeout)
